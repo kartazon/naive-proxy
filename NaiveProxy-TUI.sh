@@ -694,4 +694,257 @@ action_change_password() {
   esac
   validate_password_input "$newpass" || { msg_error "Невалидный пароль"; return 1; }
 
-  backup_now >/d
+  backup_now >/dev/null
+
+  awk -v u="$user" -v p="$newpass" '
+    /^[[:space:]]*basic_auth[[:space:]]+/ {
+      if ($2 == u) {
+        print "    basic_auth " u " " p
+        next
+      }
+    }
+    { print }
+  ' "$CONFIG" > "${CONFIG}.new"
+
+  if apply_new_config "${CONFIG}.new"; then
+    local domain
+    domain="$(get_domain)"
+    msg_success "Пароль обновлён!\n\nПользователь: $user\nНовый пароль: $newpass\n\nСсылка:\nnaive+https://${user}:${newpass}@${domain}:443"
+  else
+    msg_error "Не удалось применить конфиг"
+  fi
+}
+
+# ─── Show config ──────────────────────────────────────────
+action_show_config() {
+  [[ -f "$CONFIG" ]] || { msg_error "Конфиг не найден: $CONFIG"; return 1; }
+  whiptail --backtitle "$BACKTITLE" --title "$CONFIG" \
+    --textbox "$CONFIG" 30 100 --scrolltext
+}
+
+# ─── Show logs ────────────────────────────────────────────
+action_show_logs() {
+  local log="/tmp/naive_logs_$$.txt"
+  journalctl -u caddy --no-pager -n 100 2>/dev/null > "$log" || echo "Логи не найдены" > "$log"
+  whiptail --backtitle "$BACKTITLE" --title "Логи Caddy (последние 100 строк)" \
+    --textbox "$log" 30 100 --scrolltext
+  rm -f "$log"
+}
+
+# ─── Backup management ───────────────────────────────────
+action_backup_now() {
+  if [[ ! -f "$CONFIG" ]]; then
+    msg_error "Конфиг не найден — нечего бэкапить"
+    return 1
+  fi
+  local f
+  f=$(backup_now)
+  msg_success "Бэкап создан:\n\n$f"
+}
+
+action_restore_backup() {
+  [[ -d "$BACKUP_DIR" ]] || { msg_error "Нет директории бэкапов"; return 1; }
+
+  local -a backups=()
+  for f in "$BACKUP_DIR"/*.bak; do
+    [[ -f "$f" ]] || continue
+    backups+=("$(basename "$f")" "$(stat -c '%y' "$f" 2>/dev/null | cut -d. -f1)")
+  done
+
+  if [[ ${#backups[@]} -eq 0 ]]; then
+    msg_error "Нет бэкапов в $BACKUP_DIR"
+    return 1
+  fi
+
+  local choice
+  choice=$(whiptail --backtitle "$BACKTITLE" --title "Восстановление" \
+    --menu "Выберите бэкап:" 20 80 10 "${backups[@]}" \
+    3>&1 1>&2 2>&3) || return
+
+  ask_yesno "Подтверждение" "Восстановить $choice?\n\nТекущий конфиг будет заменён (но сначала сохранён в новый бэкап)." || return
+
+  backup_now >/dev/null
+
+  if ! caddy validate --config "$BACKUP_DIR/$choice" 2>/dev/null; then
+    msg_error "Бэкап невалиден!"
+    return 1
+  fi
+
+  cp "$BACKUP_DIR/$choice" "$CONFIG"
+  caddy reload --config "$CONFIG" --force
+  msg_success "Конфиг восстановлен из:\n$choice"
+}
+
+# ─── Export JSON ──────────────────────────────────────────
+action_export_json() {
+  require_cmd jq || { msg_error "jq не установлен"; return 1; }
+  local domain
+  domain="$(get_domain)"
+  [[ -n "$domain" ]] || { msg_error "Домен не найден"; return 1; }
+
+  local out="/tmp/naive_export_$$.json"
+  local results=()
+  while IFS=' ' read -r _ user pass _rest; do
+    [[ -n "$user" && -n "$pass" ]] || continue
+    results+=("$(jq -n \
+      --arg server "$domain" \
+      --arg user "$user" \
+      --arg pass "$pass" \
+      '{
+        type: "naive",
+        tag: $user,
+        server: $server,
+        port: 443,
+        username: $user,
+        password: $pass,
+        tls: true
+      }')")
+  done < <(list_clients_lines)
+
+  if [[ ${#results[@]} -eq 0 ]]; then
+    msg_error "Клиентов нет"
+    return
+  fi
+
+  printf '%s\n' "${results[@]}" | jq -s '.' > "$out"
+  whiptail --backtitle "$BACKTITLE" --title "JSON экспорт" \
+    --textbox "$out" 30 100 --scrolltext
+  rm -f "$out"
+}
+
+# ─── Service control ──────────────────────────────────────
+action_service() {
+  local action
+  action=$(whiptail --backtitle "$BACKTITLE" --title "Управление Caddy" \
+    --menu "Что сделать?" 15 60 4 \
+    "start"    "Запустить" \
+    "stop"     "Остановить" \
+    "restart"  "Перезапустить" \
+    "status"   "Показать статус" \
+    3>&1 1>&2 2>&3) || return
+
+  case "$action" in
+    start)
+      systemctl start caddy && msg_success "Caddy запущен" || msg_error "Не удалось запустить"
+      ;;
+    stop)
+      ask_yesno "Подтверждение" "Остановить Caddy? Все клиенты потеряют связь." || return
+      systemctl stop caddy && msg_success "Caddy остановлен" || msg_error "Не удалось остановить"
+      ;;
+    restart)
+      systemctl restart caddy && msg_success "Caddy перезапущен" || msg_error "Не удалось перезапустить"
+      ;;
+    status)
+      local out="/tmp/naive_status_$$.txt"
+      systemctl status caddy --no-pager 2>&1 > "$out"
+      whiptail --backtitle "$BACKTITLE" --title "Статус Caddy" \
+        --textbox "$out" 25 90 --scrolltext
+      rm -f "$out"
+      ;;
+  esac
+}
+
+# ─── Update ────────────────────────────────────────────────
+action_update() {
+  ask_yesno "Обновление Caddy" "Пересобрать Caddy с последней версией naive-плагина?\n\nЭто займёт 3-7 минут. Caddy будет перезапущен в конце." || return
+
+  systemctl is-active --quiet caddy || { msg_error "Caddy не запущен"; return 1; }
+
+  local log="/tmp/naive_update_$$.log"
+  {
+    ensure_pkgs 2>&1
+    backup_now
+    build_caddy 2>&1
+    systemctl restart caddy 2>&1
+    echo ""
+    echo "✔ Caddy обновлён: $(caddy version 2>/dev/null || echo 'ok')"
+  } > "$log" 2>&1 &
+
+  local pid=$!
+  (
+    local step=0
+    while kill -0 "$pid" 2>/dev/null; do
+      step=$((step + 5))
+      [[ $step -gt 95 ]] && step=95
+      echo "XXX"
+      echo "$step"
+      echo "Пересборка..."
+      echo "XXX"
+      sleep 2
+    done
+  ) | whiptail --backtitle "$BACKTITLE" --title "Обновление Caddy" \
+    --gauge "Запускаю..." 10 70 0
+
+  wait "$pid"
+  whiptail --backtitle "$BACKTITLE" --title "Лог обновления" \
+    --textbox "$log" 30 100 --scrolltext
+  rm -f "$log"
+}
+
+# ─── Uninstall ────────────────────────────────────────────
+action_uninstall() {
+  ask_yesno "⚠ УДАЛЕНИЕ" "Удалить Caddy, systemd unit и остановить сервис?\n\nКонфиг ($CONFIG) и бэкапы ($BACKUP_DIR) СОХРАНЯТСЯ." || return
+  ask_yesno "⚠ Подтверждение" "Вы ТОЧНО уверены?" || return
+
+  systemctl stop caddy 2>/dev/null
+  systemctl disable caddy 2>/dev/null
+  rm -f /etc/systemd/system/caddy.service
+  rm -f /usr/bin/caddy
+  systemctl daemon-reload
+
+  msg_success "Удалено.\n\nКонфиг и бэкапы сохранены на случай если захочешь восстановить."
+}
+
+# ═══════════════════════════════════════════════════════════
+# MAIN MENU
+# ═══════════════════════════════════════════════════════════
+main_menu() {
+  while true; do
+    local status
+    status="$(build_status_text)"
+
+    local choice
+    choice=$(whiptail --backtitle "$BACKTITLE" \
+      --title "NaïveProxy Manager" \
+      --menu "$status\n\nВыберите действие:" 25 76 12 \
+      "1"  "📥 Установить NaïveProxy" \
+      "2"  "👤 Добавить клиента" \
+      "3"  "📋 Список клиентов" \
+      "4"  "❌ Удалить клиента" \
+      "5"  "🔑 Сменить пароль" \
+      "6"  "🛠  Управление сервисом" \
+      "7"  "🔄 Обновить Caddy" \
+      "8"  "💾 Создать бэкап" \
+      "9"  "♻  Восстановить бэкап" \
+      "10" "📤 Экспорт JSON" \
+      "11" "📄 Показать конфиг" \
+      "12" "📊 Показать логи" \
+      "13" "🗑  Удалить установку" \
+      "0"  "🚪 Выход" \
+      3>&1 1>&2 2>&3) || exit 0
+
+    case "$choice" in
+      1)  action_install ;;
+      2)  action_add_client ;;
+      3)  action_list_clients ;;
+      4)  action_delete_client ;;
+      5)  action_change_password ;;
+      6)  action_service ;;
+      7)  action_update ;;
+      8)  action_backup_now ;;
+      9)  action_restore_backup ;;
+      10) action_export_json ;;
+      11) action_show_config ;;
+      12) action_show_logs ;;
+      13) action_uninstall ;;
+      0)  exit 0 ;;
+    esac
+  done
+}
+
+# ═══════════════════════════════════════════════════════════
+# ENTRY POINT
+# ═══════════════════════════════════════════════════════════
+need_root
+ensure_whiptail
+main_menu
