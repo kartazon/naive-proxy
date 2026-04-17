@@ -1,4 +1,4 @@
-# NaïveProxy 
+# NaïveProxy
 
 Интерактивный установщик и менеджер [NaïveProxy](https://github.com/klzgrad/naiveproxy) для Ubuntu/Debian. Ставит Caddy с naive-плагином forwardproxy, настраивает TLS, BBR, firewall и systemd — всё одним скриптом с удобным меню.
 
@@ -10,15 +10,23 @@
 - **Камуфляжная страница** — при зондировании без auth сервер отвечает как обычный веб-сайт
 - **Padding** — маскировка длин пакетов
 
-## Быстрая установка / запуск
+## 🚀 Быстрый старт
 
-Одна команда:
+Поставить и сразу запустить:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pumbaX/naiv/main/NaiveProxy.sh -o /tmp/naive.sh && sudo bash /tmp/naive.sh
+sudo curl -fsSL https://raw.githubusercontent.com/pumbaX/naiv/main/NaiveProxy.sh -o /usr/local/bin/naive && sudo chmod +x /usr/local/bin/naive && sudo naive
 ```
 
-Открывается меню — дальше по пунктам.
+## 🎁 Запуск в любой момент
+
+```bash
+sudo naive
+```
+
+## 🔄 Обновление
+
+Просто повтори команду быстрого старта — она перезапишет скрипт свежей версией с GitHub.
 
 ---
 
@@ -123,8 +131,8 @@ dig +short A vpn.mydomain.com
 ## Управление
 
 ```bash
-# Открыть меню (каждый раз — последняя версия с GitHub)
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/pumbaX/naiv/main/NaiveProxy.sh)
+# Открыть меню
+sudo naive
 
 # Логи Caddy в реальном времени
 sudo journalctl -u caddy -f
@@ -138,12 +146,13 @@ sudo caddy validate --config /etc/caddy/Caddyfile
 
 ## Обновление скрипта
 
-Каждый запуск через `bash <(curl ...)` скачивает свежую версию с GitHub — отдельно обновлять ничего не нужно.
+Каждый запуск через быстрый старт перезаписывает `/usr/local/bin/naive` свежей версией с GitHub. Команда `sudo naive` запускает локальную копию — не качает с интернета каждый раз.
 
 ## Пути
 
 | Что | Где |
 |-----|-----|
+| Сам скрипт | `/usr/local/bin/naive` |
 | Caddyfile | `/etc/caddy/Caddyfile` |
 | Бэкапы | `/etc/caddy/backups/` |
 | Systemd unit | `/etc/systemd/system/caddy.service` |
@@ -164,10 +173,11 @@ sudo caddy validate --config /etc/caddy/Caddyfile
 Полное удаление включая конфиги:
 ```bash
 # В меню пункт 16 — снимает Caddy и systemd
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/pumbaX/naiv/main/NaiveProxy.sh)
+sudo naive
 
 # Потом удалить остатки
 sudo rm -rf /etc/caddy /var/www/html
+sudo rm -f /usr/local/bin/naive
 ```
 
 ## FAQ
