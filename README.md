@@ -4,7 +4,7 @@
 
 ## Установка
 
-bash <(curl -fsSL https://raw.githubusercontent.com/pumbaX/naiv/main/NaiveProxy-TUI.sh)
+```bash <(curl -fsSL https://raw.githubusercontent.com/pumbaX/naiv/main/NaiveProxy-TUI.sh) ```
 
 ## Требования
 - Ubuntu 22/24, Debian 11/12
