@@ -26,8 +26,28 @@ echo "📦 Устанавливаю команду 'naive'..."
 cat > "$INSTALL_PATH" <<EOF
 #!/usr/bin/env bash
 # Обёртка для NaïveProxy Manager
-# Скачивает последнюю версию скрипта и запускает
-exec bash <(curl -fsSL "https://raw.githubusercontent.com/${REPO}/${BRANCH}/${SCRIPT_NAME}") "\$@"
+# Скачивает скрипт во временный файл и запускает с прямым stdin
+
+set -e
+
+if [[ \${EUID:-\$(id -u)} -ne 0 ]]; then
+  if command -v sudo >/dev/null 2>&1; then
+    exec sudo bash "\$0" "\$@"
+  else
+    echo "❌ Запустите от root"
+    exit 1
+  fi
+fi
+
+TMP=\$(mktemp /tmp/naive.XXXXXX.sh)
+trap 'rm -f "\$TMP"' EXIT
+
+if ! curl -fsSL "https://raw.githubusercontent.com/${REPO}/${BRANCH}/${SCRIPT_NAME}" -o "\$TMP"; then
+  echo "❌ Не удалось скачать скрипт"
+  exit 1
+fi
+
+exec bash "\$TMP" "\$@"
 EOF
 
 chmod +x "$INSTALL_PATH"
