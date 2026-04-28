@@ -11,6 +11,13 @@ BACKUP_DIR="/etc/caddy/backups"
 TMPDIR_BUILD="/root/naiveproxy-build-tmp"
 GO_TAR="/tmp/go.tar.gz"
 MAX_BACKUPS="${MAX_BACKUPS:-10}"
+
+# ═══════════════════════════════════════════════════════════
+# WATCHDOG
+WATCHDOG_LIB="/usr/local/lib/naiveproxy-watchdog-setup.sh"
+WATCHDOG_URL="https://raw.githubusercontent.com/kartazon/naive-proxy/refs/heads/main/naiveproxy-watchdog-setup.sh"
+# ═══════════════════════════════════════════════════════════
+
 export PATH="/usr/local/go/bin:/root/go/bin:$PATH"
 
 
@@ -877,6 +884,7 @@ show_status() {
   p443=$(ss -Hlnt 2>/dev/null | awk '$4 ~ /[:.]443$/ {print "TCP ✔"; exit}')
   echo "  │ :443:       ${p443:-нет}"
 
+  [[ -f "$WATCHDOG_LIB" ]] && source "$WATCHDOG_LIB" 2>/dev/null && monitoring_status || true
   echo "  └─────────────────────────────────────────────┘"
 }
 
@@ -1046,6 +1054,37 @@ diagnose() {
 }
 
 # ═══════════════════════════════════════════════════════════
+# WATCHDOG LIB — скачивается с GitHub при первом вызове пункта 18
+# ═══════════════════════════════════════════════════════════
+download_watchdog_lib() {
+  if [[ -f "$WATCHDOG_LIB" ]]; then
+    return 0
+  fi
+
+  echo "  📥 Скачиваю watchdog-модуль..."
+  mkdir -p "$(dirname "$WATCHDOG_LIB")"
+
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --connect-timeout 10 --max-time 30 "$WATCHDOG_URL" -o "$WATCHDOG_LIB"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$WATCHDOG_LIB" "$WATCHDOG_URL"
+  else
+    echo "❌ Нужен curl или wget" >&2
+    return 1
+  fi
+
+  if [[ ! -s "$WATCHDOG_LIB" ]]; then
+    rm -f "$WATCHDOG_LIB"
+    echo "❌ Файл пустой или не скачался: $WATCHDOG_URL" >&2
+    return 1
+  fi
+
+  chmod 750 "$WATCHDOG_LIB"
+  echo "  ✔ Watchdog-модуль загружен: $WATCHDOG_LIB"
+}
+
+
+# ═══════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════
 need_root
@@ -1083,6 +1122,7 @@ while true; do
   echo "  15) Управление сервисами"
   echo "  16) Диагностика"
   echo "  17) Удалить установку"
+  echo "  18) 📡 Мониторинг (Watchdog)"
   echo "  0)  Выход"
   echo ""
 
@@ -1154,6 +1194,13 @@ while true; do
     15) run_action service_control ;;
     16) run_action diagnose ;;
     17) run_action uninstall ;;
+    18)
+      download_watchdog_lib || { echo "❌ Не удалось загрузить модуль"; read -rp "" _; continue; }
+      # shellcheck source=/dev/null
+      source "$WATCHDOG_LIB"
+      case_monitoring
+      ;;
+
     *)
       echo "❌ Неверный выбор"
       ;;
