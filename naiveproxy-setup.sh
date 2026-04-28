@@ -566,7 +566,8 @@ install_or_reinstall() {
   # DNS check
   local server_ip domain_ip
   server_ip="$(curl -4 -s --connect-timeout 5 ifconfig.me 2>/dev/null || true)"
-  domain_ip="$(dig +short A "$DOMAIN" 2>/dev/null | head -n1 || true)"
+  #domain_ip="$(dig +short A "$DOMAIN" 2>/dev/null | head -n1 || true)"
+  domain_ip="$(dig +short A "$DOMAIN" +time=3 +tries=1 2>/dev/null | grep -E '^[0-9]+\.' | head -n1 || true)"
   echo "  IP сервера: ${server_ip:-не определён}"
   echo "  IP домена:  ${domain_ip:-не определён}"
   if [[ -n "$server_ip" && -n "$domain_ip" && "$server_ip" != "$domain_ip" ]]; then
