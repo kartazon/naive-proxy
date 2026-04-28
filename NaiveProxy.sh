@@ -34,10 +34,13 @@ require_cmd() {
 }
 
 ensure_pkgs() {
-  apt-get update -y
-  DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    curl wget git openssl ufw dnsutils jq ca-certificates qrencode \
-    gcc libc6-dev libc-dev    # ← добавить три пакета
+    local missing=()
+    for pkg in curl wget git openssl ufw dnsutils jq ca-certificates qrencode gcc libc6-dev libc-dev; do
+        dpkg -s "$pkg" &>/dev/null || missing+=("$pkg")
+    done
+    [[ ${#missing[@]} -eq 0 ]] && return 0
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y "${missing[@]}"
 }
 
 ensure_caddy_running() {
@@ -170,7 +173,7 @@ backup_now() {
 # ═══════════════════════════════════════════════════════════
 apply_new_config() {
   local new_config="$1"
-
+  require_cmd caddy
   caddy fmt --overwrite "$new_config" 2>/dev/null || true
 
   if ! caddy validate --config "$new_config" 2>/dev/null; then
@@ -668,7 +671,7 @@ download_to() {
   }
 }
 EOF
-
+  require_cmd caddy
   caddy fmt --overwrite "$CONFIG" 2>/dev/null || true
 
   if ! caddy validate --config "$CONFIG"; then
