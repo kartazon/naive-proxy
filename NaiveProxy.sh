@@ -77,19 +77,31 @@ build_caddy() {
   [[ -n "$go_version" ]] || { echo "❌ Не смог получить версию Go"; exit 1; }
   echo "📦 Go $go_version ($go_arch)"
 
-  wget -q "https://go.dev/dl/${go_version}.linux-${go_arch}.tar.gz" -O "$GO_TAR"
+  wget -q "https://go.dev/dl/${go_version}.linux-${go_arch}.tar.gz" -O "$GO_TAR" \
+    || { echo "❌ Не удалось скачать Go"; exit 1; }
+
   rm -rf /usr/local/go
-  tar -C /usr/local -xzf "$GO_TAR"
+  tar -C /usr/local -xzf "$GO_TAR" \
+    || { echo "❌ Не удалось распаковать Go"; exit 1; }
+
   export PATH="/usr/local/go/bin:/root/go/bin:$PATH"
 
-  mkdir -p "$TMPDIR_BUILD"
+  rm -rf "$TMPDIR_BUILD" && mkdir -p "$TMPDIR_BUILD"
   export TMPDIR="$TMPDIR_BUILD"
 
-  go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+  go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest \
+    || { echo "❌ Не удалось установить xcaddy"; exit 1; }
+
+  [[ -x "/root/go/bin/xcaddy" ]] \
+    || { echo "❌ xcaddy не найден после установки"; exit 1; }
 
   cd "$TMPDIR_BUILD"
   /root/go/bin/xcaddy build \
-    --with github.com/caddyserver/forwardproxy@caddy2=github.com/klzgrad/forwardproxy@naive
+    --with github.com/caddyserver/forwardproxy@caddy2=github.com/klzgrad/forwardproxy@naive \
+    || { echo "❌ xcaddy build завершился с ошибкой"; exit 1; }
+
+  [[ -f "$TMPDIR_BUILD/caddy" ]] \
+    || { echo "❌ Бинарник caddy не собран"; exit 1; }
 
   mv "$TMPDIR_BUILD/caddy" /usr/bin/caddy
   chmod +x /usr/bin/caddy
@@ -100,7 +112,6 @@ build_caddy() {
 
 # ═══════════════════════════════════════════════════════════
 # SYSTEMD UNIT — CADDY
-
 # ═══════════════════════════════════════════════════════════
 ensure_systemd_unit_caddy() {
   local unit="/etc/systemd/system/caddy.service"
