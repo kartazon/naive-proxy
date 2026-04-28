@@ -32,10 +32,73 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "❌ Не найдена команда: $1"; exit 1; }
 }
 
-ensure_pkgs() {
+check_platform() {
+  [[ -f /etc/os-release ]] || { echo "❌ Не найден /etc/os-release"; exit 1; }
+  . /etc/os-release
+
+  case "${ID:-}" in
+    ubuntu|debian) ;;
+    *)
+      echo "❌ Поддерживаются только Debian/Ubuntu. Обнаружено: ${ID:-unknown}"
+      exit 1
+      ;;
+  esac
+}
+
+check_required_cmds() {
+  local missing=()
+  local cmd
+
+  for cmd in awk sed grep cut tr head tail sort xargs cp mv rm mkdir chmod stat \
+             curl wget tar openssl systemctl ss apt-get; do
+    command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
+  done
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "❌ Не найдены обязательные команды: ${missing[*]}"
+    exit 1
+  fi
+}
+
+ensure_build_pkgs() {
+  local pkgs=(
+    build-essential
+    libc6-dev
+    gcc
+    g++
+    make
+    pkg-config
+    linux-libc-dev
+    ca-certificates
+    git
+    curl
+    wget
+    tar
+    openssl
+  )
+
+  if apt-cache show libstdc++-13-dev >/dev/null 2>&1; then
+    pkgs+=(libstdc++-13-dev)
+  fi
+
   apt-get update -y
-  DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    curl wget git openssl ufw dnsutils jq ca-certificates qrencode
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "${pkgs[@]}"
+
+  command -v gcc >/dev/null 2>&1 || { echo "❌ gcc не найден"; exit 1; }
+  command -v g++ >/dev/null 2>&1 || { echo "❌ g++ не найден"; exit 1; }
+  command -v make >/dev/null 2>&1 || { echo "❌ make не найден"; exit 1; }
+
+  [[ -f /usr/include/stdlib.h ]] || { echo "❌ Нет /usr/include/stdlib.h (libc6-dev)"; exit 1; }
+  [[ -f /usr/include/stdint.h ]] || { echo "❌ Нет /usr/include/stdint.h (libc6-dev/linux-libc-dev)"; exit 1; }
+  [[ -f /usr/include/stdio.h ]] || { echo "❌ Нет /usr/include/stdio.h (libc6-dev)"; exit 1; }
+  [[ -f /usr/include/errno.h ]] || { echo "❌ Нет /usr/include/errno.h (libc6-dev)"; exit 1; }
+  [[ -f /usr/include/pthread.h ]] || { echo "❌ Нет /usr/include/pthread.h (libc6-dev)"; exit 1; }
+}
+
+secure_config_perms() {
+  [[ -f "$CONFIG" ]] || return 0
+  chown root:root "$CONFIG"
+  chmod 600 "$CONFIG"
 }
 
 ensure_caddy_running() {
