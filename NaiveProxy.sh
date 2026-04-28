@@ -11,6 +11,7 @@ BACKUP_DIR="/etc/caddy/backups"
 TMPDIR_BUILD="/root/naiveproxy-build-tmp"
 GO_TAR="/tmp/go.tar.gz"
 MAX_BACKUPS="${MAX_BACKUPS:-10}"
+export PATH="/usr/local/go/bin:/root/go/bin:$PATH"
 
 # ═══════════════════════════════════════════════════════════
 # CLEANUP
