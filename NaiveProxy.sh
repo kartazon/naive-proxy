@@ -20,7 +20,7 @@ export PATH="/usr/local/go/bin:/root/go/bin:$PATH"
 download_to() {
   local url=$1 dest=$2
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$url" -o "$dest"
+    curl -fsSL --connect-timeout 10 --max-time 30 "$url" -o "$dest"
   elif command -v wget >/dev/null 2>&1; then
     wget -qO "$dest" "$url"
   else
@@ -92,7 +92,7 @@ build_caddy() {
   go_arch="$(detect_go_arch)"
 
   local go_version
-  go_version="$(curl -fsSL "https://go.dev/VERSION?m=text" | head -n1)"
+  go_version="$(curl -fsSL --connect-timeout 10 --max-time 30 "https://go.dev/VERSION?m=text" | head -n1)"
   [[ -n "$go_version" ]] || { echo "❌ Не смог получить версию Go"; exit 1; }
   echo "📦 Go $go_version ($go_arch)"
 
