@@ -35,7 +35,8 @@ require_cmd() {
 ensure_pkgs() {
   apt-get update -y
   DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    curl wget git openssl ufw dnsutils jq ca-certificates qrencode
+    curl wget git openssl ufw dnsutils jq ca-certificates qrencode \
+    gcc libc6-dev libc-dev    # ← добавить три пакета
 }
 
 ensure_caddy_running() {
