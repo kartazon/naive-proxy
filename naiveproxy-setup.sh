@@ -1091,7 +1091,12 @@ download_watchdog_lib() {
 need_root
 
 run_action() {
-  ( "$@" ) || echo "⚠️  Действие завершилось с ошибкой"
+  local rc=0
+  ( "$@" ) || rc=$?
+  if [[ $rc -ne 0 && $rc -ne 130 ]]; then
+    echo "⚠️  Действие завершилось с ошибкой (exit $rc)"
+  fi
+  return 0
 }
 
 while true; do
