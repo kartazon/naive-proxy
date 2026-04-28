@@ -20,9 +20,8 @@ WATCHDOG_URL="https://raw.githubusercontent.com/kartazon/naive-proxy/refs/heads/
 
 export PATH="/usr/local/go/bin:/root/go/bin:$PATH"
 
-
 # ═══════════════════════════════════════════════════════════
-# Dowload index page
+# dowload
 # ═══════════════════════════════════════════════════════════
 download_to() {
   local url=$1 dest=$2
@@ -103,8 +102,9 @@ build_caddy() {
   [[ -n "$go_version" ]] || { echo "❌ Не смог получить версию Go"; exit 1; }
   echo "📦 Go $go_version ($go_arch)"
 
-  wget -q "https://go.dev/dl/${go_version}.linux-${go_arch}.tar.gz" -O "$GO_TAR" \
+  download_to "https://go.dev/dl/${go_version}.linux-${go_arch}.tar.gz" "$GO_TAR" \
     || { echo "❌ Не удалось скачать Go"; exit 1; }
+    [[ -s "$GO_TAR" ]] || { echo "❌ Архив Go пустой"; exit 1; }
 
   rm -rf /usr/local/go
   tar -C /usr/local -xzf "$GO_TAR" \
